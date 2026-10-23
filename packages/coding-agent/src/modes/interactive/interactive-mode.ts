@@ -3227,6 +3227,11 @@ export class InteractiveMode {
 				this.editor.setText("");
 				return;
 			}
+			if (text === "/todos") {
+				this.editor.setText("");
+				await this.handleTodosCommand();
+				return;
+			}
 			if (text === "/fork") {
 				this.showUserMessageSelector();
 				this.editor.setText("");
@@ -6894,6 +6899,93 @@ export class InteractiveMode {
 		this.chatContainer.addChild(new Markdown(hotkeys.trim(), 1, 1, this.getMarkdownThemeWithSettings()));
 		this.chatContainer.addChild(new DynamicBorder());
 		this.ui.requestRender();
+	}
+
+	private async handleTodosCommand(): Promise<void> {
+		try {
+			const rgPath = await ensureTool("rg");
+			if (!rgPath) {
+				this.chatContainer.addChild(new Spacer(1));
+				this.chatContainer.addChild(new ThemedText(() => theme.fg("error", "ripgrep (rg) is not available"), 1, 1));
+				this.ui.requestRender();
+				return;
+			}
+
+			// Search for TODO, FIXME, XXX, HACK, NOTE patterns
+			const pattern = "(TODO|FIXME|XXX|HACK|NOTE):?";
+			const cwd = this.sessionManager.getCwd();
+			const args = [
+				"-n", // Show line numbers
+				"--no-heading", // Don't group by file
+				"--color=never",
+				"-i", // Case insensitive
+				"-e",
+				pattern,
+				cwd,
+			];
+
+			const proc = spawn(rgPath, args, { cwd });
+			let output = "";
+			let errorOutput = "";
+
+			proc.stdout.on("data", (data) => {
+				output += data.toString();
+			});
+
+			proc.stderr.on("data", (data) => {
+				errorOutput += data.toString();
+			});
+
+			proc.on("close", (code) => {
+				// ripgrep exit code 1 means no matches found
+				if (code !== 0 && code !== 1) {
+					this.chatContainer.addChild(new Spacer(1));
+					this.chatContainer.addChild(
+						new ThemedText(
+							() => theme.fg("error", `Error searching for TODOs: ${errorOutput || "Unknown error"}`),
+							1,
+							1,
+						),
+					);
+					this.ui.requestRender();
+					return;
+				}
+
+				this.chatContainer.addChild(new Spacer(1));
+				this.chatContainer.addChild(new DynamicBorder());
+				this.chatContainer.addChild(
+					new ThemedText(() => theme.bold(theme.fg("accent", "Outstanding TODOs")), 1, 0),
+				);
+				this.chatContainer.addChild(new Spacer(1));
+
+				if (!output.trim()) {
+					this.chatContainer.addChild(
+						new ThemedText(() => theme.fg("muted", "No TODO, FIXME, XXX, HACK, or NOTE comments found."), 1, 1),
+					);
+				} else {
+					// Format output as markdown code block for better readability
+					const formattedOutput = `\`\`\`\n${output.trim()}\n\`\`\``;
+					this.chatContainer.addChild(new Markdown(formattedOutput, 1, 1, this.getMarkdownThemeWithSettings()));
+				}
+
+				this.chatContainer.addChild(new DynamicBorder());
+				this.ui.requestRender();
+			});
+		} catch (error: unknown) {
+			this.chatContainer.addChild(new Spacer(1));
+			this.chatContainer.addChild(
+				new ThemedText(
+					() =>
+						theme.fg(
+							"error",
+							`Failed to search for TODOs: ${error instanceof Error ? error.message : String(error)}`,
+						),
+					1,
+					1,
+				),
+			);
+			this.ui.requestRender();
+		}
 	}
 
 	private async handleClearCommand(): Promise<void> {
