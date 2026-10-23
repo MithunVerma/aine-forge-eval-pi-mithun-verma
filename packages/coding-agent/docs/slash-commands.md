@@ -45,6 +45,7 @@ Review a session before exporting or sharing it. Sessions can contain prompts, t
 
 | Command | Description |
 |---|---|
+| `/todos` | Show TODO and FIXME comments in the codebase |
 | `/trust` | Save a project trust decision for future Pi processes |
 | `/reload` | Reload keybindings, extensions, skills, templates, themes, and context files |
 | `/hotkeys` | Show active keyboard shortcuts |
