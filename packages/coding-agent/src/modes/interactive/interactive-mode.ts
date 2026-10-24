@@ -92,6 +92,7 @@ import type {
 	UserBashEventResult,
 	WorkingIndicatorOptions,
 } from "../../core/extensions/index.ts";
+import { findTodos } from "../../core/find-todos.ts";
 import { FooterDataProvider, type ReadonlyFooterDataProvider } from "../../core/footer-data-provider.ts";
 import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "../../core/http-dispatcher.ts";
 import { type AppKeybinding, KeybindingsManager } from "../../core/keybindings.ts";
@@ -176,6 +177,7 @@ import {
 } from "./components/status-indicator.ts";
 import { ThemedText } from "./components/themed-text.ts";
 import { ThinkingSelectorComponent } from "./components/thinking-selector.ts";
+import { TodosListComponent } from "./components/todos-list.ts";
 import { ToolExecutionComponent } from "./components/tool-execution.ts";
 import { TreeSelectorComponent } from "./components/tree-selector.ts";
 import { TrustSelectorComponent } from "./components/trust-selector.ts";
@@ -3240,6 +3242,11 @@ export class InteractiveMode {
 			if (text === "/tree") {
 				this.showTreeSelector();
 				this.editor.setText("");
+				return;
+			}
+			if (text === "/todos") {
+				this.editor.setText("");
+				await this.handleTodosCommand();
 				return;
 			}
 			if (text === "/trust") {
@@ -6590,6 +6597,28 @@ export class InteractiveMode {
 			showStatus: (message) => this.showStatus(message),
 			showError: (message) => this.showError(message),
 		});
+	}
+
+	private async handleTodosCommand(): Promise<void> {
+		// Show a status message while searching
+		this.showStatus("Searching for TODOs...");
+
+		try {
+			const cwd = this.session.sessionManager.getCwd();
+			const results = await findTodos(cwd, this.session.agent.signal);
+
+			// Display results in an overlay
+			this.showSelector((_done) => {
+				const component = new TodosListComponent(results);
+				return { component, focus: component };
+			});
+		} catch (error) {
+			if (error instanceof Error && error.name === "AbortError") {
+				this.showStatus("Search cancelled");
+			} else {
+				this.showError(`Failed to search for TODOs: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
 	}
 
 	private async handleBugCommand(hint: string | undefined): Promise<void> {
