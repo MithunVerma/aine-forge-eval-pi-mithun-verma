@@ -92,6 +92,7 @@ import type {
 	UserBashEventResult,
 	WorkingIndicatorOptions,
 } from "../../core/extensions/index.ts";
+import { findTodos } from "../../core/find-todos.ts";
 import { FooterDataProvider, type ReadonlyFooterDataProvider } from "../../core/footer-data-provider.ts";
 import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "../../core/http-dispatcher.ts";
 import { type AppKeybinding, KeybindingsManager } from "../../core/keybindings.ts";
@@ -3219,6 +3220,11 @@ export class InteractiveMode {
 			}
 			if (text === "/changelog") {
 				this.handleChangelogCommand();
+				this.editor.setText("");
+				return;
+			}
+			if (text === "/todos") {
+				await this.handleTodosCommand();
 				this.editor.setText("");
 				return;
 			}
@@ -6763,6 +6769,50 @@ export class InteractiveMode {
 		this.chatContainer.addChild(new Markdown(changelogMarkdown, 1, 1, this.getMarkdownThemeWithSettings()));
 		this.chatContainer.addChild(new DynamicBorder());
 		this.ui.requestRender();
+	}
+
+	private async handleTodosCommand(): Promise<void> {
+		const cwd = this.sessionManager.getCwd();
+
+		try {
+			const result = await findTodos({ cwd });
+			const todoItems = result.items;
+			const totalCount = result.totalCount;
+
+			let todosText: string;
+			if (todoItems.length === 0) {
+				todosText = "No TODO or FIXME comments found.";
+			} else {
+				const lines = todoItems.map((item) => {
+					const relativePath = getCwdRelativePath(item.file, cwd);
+					return `- **${relativePath}:${item.line}** - ${item.text}`;
+				});
+
+				if (totalCount > todoItems.length) {
+					const remaining = totalCount - todoItems.length;
+					lines.push(`\n…and ${remaining} more`);
+				}
+
+				todosText = lines.join("\n");
+			}
+
+			this.chatContainer.addChild(new Spacer(1));
+			this.chatContainer.addChild(new DynamicBorder());
+			this.chatContainer.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "TODOs")), 1, 0));
+			this.chatContainer.addChild(new Spacer(1));
+			this.chatContainer.addChild(new Markdown(todosText, 1, 1, this.getMarkdownThemeWithSettings()));
+			this.chatContainer.addChild(new DynamicBorder());
+			this.ui.requestRender();
+		} catch (error) {
+			const errorMsg = error instanceof Error ? error.message : String(error);
+			this.chatContainer.addChild(new Spacer(1));
+			this.chatContainer.addChild(new DynamicBorder());
+			this.chatContainer.addChild(new ThemedText(() => theme.bold(theme.fg("accent", "TODOs")), 1, 0));
+			this.chatContainer.addChild(new Spacer(1));
+			this.chatContainer.addChild(new ThemedText(() => theme.fg("error", `Error: ${errorMsg}`), 1, 0));
+			this.chatContainer.addChild(new DynamicBorder());
+			this.ui.requestRender();
+		}
 	}
 
 	/**
